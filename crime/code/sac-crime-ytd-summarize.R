@@ -22,8 +22,6 @@ police_beats <- st_read("inputs/spatial/POLICE_BEATS/POLICE_BEATS.shp")
 
 police_grids <- st_read("inputs/spatial/POLICE_GRIDS-shp/9c1206b0-8fb0-40ef-a00a-ed622069a08f202042-1-714a1w.4dbgd.shp")
 
-
-
 ### Load the most recent crime database ####
 crime <- read_csv('inputs/tabular/Sacramento_Crime_Data_From_Current_Year.csv')
 crime$Occurence_Date <- as_datetime(crime$Occurence_Date)
@@ -259,9 +257,11 @@ for(i in 1:length(neighborhood.list)){
    
 }
 
+### Bind all summary statements together into a dataframe
 all.summary.statements <- bind_rows(summary.statements.list)
 
-
+### Check nrow - should be 129 neighborhoods
 nrow(all.summary.statements)
 
-write_csv(all.summary.statements, "outputs/sac-neighborhood-total-crimes-2022-07-14.csv")
+### Write to csv
+#write_csv(all.summary.statements, "outputs/sac-neighborhood-total-crimes-2022-07-14.csv")
