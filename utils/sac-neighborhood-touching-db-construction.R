@@ -19,9 +19,10 @@ for (i in 1:length(neighborhoods.split)) {
     filter(st_touches(geometry, hood, sparse = FALSE)) %>%
     dplyr::select(NAME) %>% 
     st_drop_geometry() %>%
-    dplyr::pull()
+    dplyr::pull() %>%
+      sort(.)
     
-    neighborhoods.touching.vec <- paste(neighborhoods.touching,  collapse=",")
+    neighborhoods.touching.vec <- sort(paste(neighborhoods.touching,  collapse=","))
   
   #### Create dataframe
   neighborhood.surround.df <- data.frame(neighborhood = hood$NAME,
@@ -32,3 +33,5 @@ for (i in 1:length(neighborhoods.split)) {
 }
 
 touching.db <- bind_rows(touching.db.list)
+
+write_csv(touching.db, "/Volumes/GoogleDrive/My Drive/00_Personal Documents/Consulting/05_SFStandard_Expansion/pf-sfstandard-expansion/utils/sac-neighborhood-to-neighborhood-touching-db.csv")
