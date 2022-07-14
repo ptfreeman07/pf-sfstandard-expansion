@@ -89,6 +89,60 @@ total.crimes.summary.list <- list()
 #### SET MONTH OF ANALYSIS ####
 month.of.analysis <- 6 #June 
 
+### Calculate city-wide statistics to slot in where neighborhoods don't have any reported crimes ####
+city.crimes <- crime_grid %>% 
+  dplyr::filter(!is.na(month)) %>%
+  ungroup() %>%
+  group_by(month) %>%
+  summarise(total.crimes = sum(count.in.month)) %>%
+  dplyr::mutate(year = 2022) %>%
+  dplyr::mutate(change.total.rel.last.month = total.crimes - lag(total.crimes, n = 1)) %>%
+  dplyr::mutate(
+    direction.change.rel.last.month = case_when(
+      change.total.rel.last.month > 0 ~ "up",
+      change.total.rel.last.month < 0 ~ "down",
+      change.total.rel.last.month == 0 ~ "no change",
+      is.na(change.total.rel.last.month) ~ "NA"
+    )
+  ) %>%
+  dplyr::mutate(abs.change.total = abs(change.total.rel.last.month)) %>%
+  dplyr::mutate(last.months.total = lag(total.crimes, n=1))
+
+### Return the last row of the monthly time series of total crime
+total.crime.city.this.month <- city.crimes %>% 
+  dplyr::filter(month == max(month)) %>%
+  dplyr::mutate(month_name = month.name[month])
+
+### Produce statement about total crimes reported for the whole city
+total.crime.city.statement <- paste0("There were ", total.crime.city.this.month$total.crimes," crimes recorded across all of Sacramento during the month of ",  total.crime.city.this.month$month_name, ".")
+
+### Produce statement about change in total crimes reported for the whole city 
+if(total.crime.city.this.month$abs.change.total == 0){
+  
+  total.crime.city.change.statement <-
+    paste0(
+      "That's ",
+      total.crime.city.this.month$direction.change.rel.last.month,
+      " from the previous month's total of ",
+      total.crime.city.this.month$last.months.total,
+      "."
+    )}
+
+if(total.crime.city.this.month$abs.change.total > 0){
+  total.crime.city.change.statement <-
+    paste0(
+      "That's ",
+      total.crime.city.this.month$direction.change.rel.last.month,
+      " ",
+      total.crime.city.this.month$abs.change.total,
+      " from the previous month's total of ",
+      total.crime.city.this.month$last.months.total,
+      "."
+    )
+}
+### For-loop for neighborhood-level crime stats or, if no crime, filling in with city-wide total. ####
+
+### Prep list
 summary.statements.list <- list()
 
 for(i in 1:length(neighborhood.list)){
@@ -110,7 +164,7 @@ for(i in 1:length(neighborhood.list)){
   ### join the crime summaries to the target grids for this year and last year ### 
   target_grids_crime <- left_join(st_make_valid(target_grids), crime_grid, by="GRID")
   
-  ### Summarize total crime by month in the neighborhood and calculate percent change month over month
+  ### Summarize total crime by month in the neighborhood and calculate absolute change from previous month (data only start in January)
   total.crimes <- target_grids_crime %>%
     dplyr::filter(!is.na(month)) %>%
     ungroup() %>%
@@ -131,6 +185,7 @@ for(i in 1:length(neighborhood.list)){
     dplyr::mutate(abs.change.total = abs(change.total.rel.last.month)) %>%
     dplyr::mutate(last.months.total = lag(total.crimes, n=1))
   
+  ### If nrow of total crimes for neighborhood == 0 
   if(nrow(total.crimes) == 0){
     
     total.crime.statement <- paste0("There have been no crimes recorded in this neighborhood this year.")
@@ -139,11 +194,16 @@ for(i in 1:length(neighborhood.list)){
     
     summary.statement.df <- data.frame(
       neighborhood = target$NAME,
+      total.crime.number = 0,
       total.crime.statement = total.crime.statement,
-      total.crime.change.statement = total.crime.change.statement)
+      total.crime.change.statement = total.crime.change.statement,
+      total.crime.city.statement = total.crime.city.statement,
+      total.crime.city.change.statement = total.crime.city.change.statement)
     
     summary.statements.list[[i]] <- summary.statement.df
   }
+  
+  ### If nrow of total crimes for neighborhood > 0 
   
   if(nrow(total.crimes) > 0){
     
@@ -152,10 +212,15 @@ for(i in 1:length(neighborhood.list)){
       dplyr::filter(month == max(month)) %>%
       dplyr::mutate(month_name = month.name[month])
     
-    
+    ### Create total crime statement
     total.crime.statement <- paste0("There were ",total.crime.this.month$total.crimes," crimes recorded during the month of ", total.crime.this.month$month_name, ".")
     
-    if(total.crime.this.month$abs.change.total == 0){
+    ### Section to produce the total number of city-wide crime
+    total.crime.city.statement = total.crime.city.statement
+    total.crime.city.change.statement = total.crime.city.change.statement
+    
+    ### If there has been no change in total numbers 
+   if(total.crime.this.month$abs.change.total == 0){
       
       total.crime.change.statement <-
         paste0(
@@ -165,7 +230,7 @@ for(i in 1:length(neighborhood.list)){
           total.crime.this.month$last.months.total,
           "."
         )}
-      
+  #### If there has been a non-zero change in total   
    if(total.crime.this.month$abs.change.total > 0){
      total.crime.change.statement <-
        paste0(
@@ -182,7 +247,10 @@ for(i in 1:length(neighborhood.list)){
     summary.statement.df <- data.frame(
       neighborhood = target$NAME,
       total.crime.statement =  total.crime.statement,
-      total.crime.change.statement = total.crime.change.statement)
+      total.crime.number = total.crime.this.month$total.crimes,
+      total.crime.change.statement = total.crime.change.statement,
+      total.crime.city.statement = total.crime.city.statement,
+      total.crime.city.change.statement = total.crime.city.change.statement)
     
     summary.statements.list[[i]] <- summary.statement.df
     
@@ -193,8 +261,7 @@ for(i in 1:length(neighborhood.list)){
 
 all.summary.statements <- bind_rows(summary.statements.list)
 
-View(all.summary.statements)
 
 nrow(all.summary.statements)
 
-write_csv(all.summary.statements, "outputs/sac-neighborhood-total-crimes-2022-07-12.csv")
+write_csv(all.summary.statements, "outputs/sac-neighborhood-total-crimes-2022-07-14.csv")
