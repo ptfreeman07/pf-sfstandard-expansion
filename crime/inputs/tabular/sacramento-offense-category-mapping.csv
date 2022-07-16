@@ -1,0 +1,60 @@
+﻿Offense_Category,standard.crime.type.label,standard.crime.type.super.label
+CITYORDINANCE,Violation of a city ordinance,City ordinance or code violations
+PUBLICORDER,Violation of a public ordinance,City ordinance or code violations
+SACCITYCODE,Violation of a Sacramento city code,City ordinance or code violations
+DRUNKINPUBLI,Drunk in public,Disorderly conduct/drunk in public/disturbing the peace
+DISORDERLY,Disorderly conduct,Disorderly conduct/drunk in public/disturbing the peace
+PUBLICPEACE,Disturbance of the peace,Disorderly conduct/drunk in public/disturbing the peace
+CONSERVATION,Conservation,Environmental crimes
+COMPTHEFT,Compensation theft,Financial crimes
+EMBEZZLEMENT,Embezzlement,Financial crimes
+REGIONALTRANS,Fare evasion,Financial crimes
+FORGERY,Forgery,Forgery and counterfeiting
+FRAUD,Fraud,Forgery and counterfeiting
+FUGITIVE,Fugitive from justice,Fugitive from justice
+HEALTH/SAFETY,General health and safety violation,General health and safety violation
+INCIDENTRPT,Incident report filed,Incident report filed 
+OBSTJUDICIARY,Parole/probation/court order violations,Judiciary violations
+PENALCODE,Penal code infraction,Minor infractions
+DANGEROUSDRUG,Narcotics,Narcotics crimes
+NARCOTIC,Narcotics,Narcotics crimes
+NARCOTICS,Narcotics,Narcotics crimes
+PRIVACY,Trespassing,Trespassing
+OBSTRUCT,Obstruction of justice,Obstruction of justice
+OBSTRUCTING,Obstruction of justice,Obstruction of justice
+ARSON,Arson,Property crimes
+AUTOTHEFT,Auto theft,Property crimes
+BURGLARY,Burglary,Property crimes
+GRAFFITI,Vandalism/Graffiti,Property crimes
+GRANDTHEFT,Grand theft,Property crimes
+LARCENY,Larceny,Property crimes
+STOLENPROP,Stolen property,Property crimes
+STOLENVEHICLE,Stolen vehicle,Property crimes
+THEFT,Theft,Property crimes
+VANDALISM,Vandalism/Graffiti,Property crimes
+SEXREGISTRATI,Registration as a sex offender,Sex offender registrations
+RELEASE,Release from arrest,Releases from arrest
+RESIST,Resisting arrest,Resisting arrest
+290(G)(2),Failure to register as a sex offender,Sex crimes
+SEXUALOFFENSE,Sexual offense,Sex crimes
+ACCIDENT,Traffic violations (DUI/reckless driving/accidents),Traffic violations (DUI/reckless driving/accidents)
+IMPOUND,Impounded vehicle,Traffic violations (DUI/reckless driving/accidents)
+TRAFFIC,Traffic violations (DUI/reckless driving/accidents),Traffic violations (DUI/reckless driving/accidents)
+TRAFFICOFFENS,Traffic violations (DUI/reckless driving/accidents),Traffic violations (DUI/reckless driving/accidents)
+TRAFFICVIO,Traffic violations (DUI/reckless driving/accidents),Traffic violations (DUI/reckless driving/accidents)
+TRAFFICVIOLA,Traffic violations (DUI/reckless driving/accidents),Traffic violations (DUI/reckless driving/accidents)
+TRESPASS,Trespassing,Trespassing
+FIRE,Unauthorized fire,Unauthorized fire/fireworks
+FIREWORKS,Unauthorized fireworks,Unauthorized fire/fireworks
+BAITCAR,Bait car,Unknown
+TAMPERING,Vehicle tampering,Vehicle tampering
+TOWED/STORED,Vehicle towed/stored,Towed vehicles
+AGGASSAULT,Aggravated assault,Violent crimes
+ASSAULT,Assault,Violent crimes
+BATTERY,Battery,Violent crimes
+HOMICIDE,Homicide,Violent crimes
+KIDNAP,Kidnapping,Violent crimes
+ROBBERY,Robbery,Violent crimes
+WEAPON,Weapons offense,Weapon-related crimes
+WEAPONOFFENSE,Weapons offense,Weapon-related crimes
+WEAPONS,Weapons offense,Weapon-related crimes
