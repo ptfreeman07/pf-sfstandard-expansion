@@ -6,24 +6,26 @@
 library(tidyverse)
 library(sf)
 library(lubridate)
-library(ggpubr)
-library(ggthemes)
+library(janitor)
 
 #### Load the neighborhood shapefile ####
 neighborhoods <- st_read("inputs/spatial/Sacramento-Neighborhoods-shp/Neighborhoods.shp")
 
-#### Load police districts, beats, and grids #### 
+#### Load a database the does some consolidation of the OFFENSE_CATEGORY field of the crime database provided by Sacramento Police Department based on PTFreeman's read of offense codes/alignment with FBI's UCR database 
+
+crime_types <- read_csv("inputs/tabular/sacramento-offense-category-mapping.csv") %>%
+  dplyr::mutate(Offense_Category_clean = str_replace_all(Offense_Category, "[\r\n]" , "")) %>%
+  dplyr::select(-Offense_Category)
+
+#### Load police grids #### 
 
 #### City of Sacramento police district boundaries. Districts are the largest of the areas; the city is divided into 6 Districts. The Districts are divided into Beats, which are assigned to patrol officers. The Beats are divided into Grids for reporting purposes.
 
-police_districts <- st_read("inputs/spatial/POLICE_DISTRICTS-shp/132d4fc4-0c45-4947-a260-40facf99a7892020328-1-zte2o6.wz1u.shp")
-
-police_beats <- st_read("inputs/spatial/POLICE_BEATS/POLICE_BEATS.shp")
-
 police_grids <- st_read("inputs/spatial/POLICE_GRIDS-shp/9c1206b0-8fb0-40ef-a00a-ed622069a08f202042-1-714a1w.4dbgd.shp")
 
-### Load the most recent crime database ####
+### Load the most recent crime database sourced from ####
 crime <- read_csv('inputs/tabular/Sacramento_Crime_Data_From_Current_Year.csv')
+### Clean up date information
 crime$Occurence_Date <- as_datetime(crime$Occurence_Date)
 crime$month <- month(crime$Occurence_Date)
 crime$day <- day(crime$Occurence_Date)
@@ -33,17 +35,20 @@ crime$day <- day(crime$Occurence_Date)
 max(crime$Occurence_Date)
 
 #### Summarize the data by category by grid by month#####
+#### Also do a join to the crime type mapping to consolidate crime types ###
 crime_grid <- crime %>% 
   group_by(Grid, Offense_Category, month) %>% 
   dplyr::rename(GRID = Grid) %>% 
   dplyr::summarise(
     count.in.month = n()
   ) %>% 
-  dplyr::arrange(., GRID, desc(count.in.month))
+  dplyr::arrange(., GRID, desc(count.in.month)) %>% 
+  dplyr::mutate(Offense_Category_clean = str_remove_all(Offense_Category, " ")) %>%
+  dplyr::mutate(Offense_Category_clean = str_replace_all(Offense_Category_clean, "[\r\n]" , "")) %>%
+  dplyr::left_join(., crime_types, by="Offense_Category_clean")
 
 #### THIS ENTIRE SECTION CREATES A KEY FOR MAPPING GRIDS TO NEIGHBORHOODS ####
 #### Want to determine the police district(s), beat(s), and grid(s) that cover neighborhoods of interest
-
 
 ### Calculate area of intersection of neighborhoods and police grids ####
 intersect_pct_grid <- st_intersection(st_make_valid(neighborhoods), st_make_valid(police_grids)) %>% 
@@ -66,35 +71,23 @@ neighborhoods_grid_coverage  <- neighborhoods_grid %>%
   dplyr::arrange(., NAME, GRID, desc(coverage)) %>% 
   dplyr::select(NAME, FID, GRID, coverage)
 
-
 ####### SECTION TO PRODUCE TOPLINE SUMMARY OF TOTAL CRIMES AND % CHANGE SINCE PREVIOUS MONTH ######
 
 ### Join the police grids to the crime calculations 
 ### Calculate the sum total of all crimes of all types in each month 
-police_grids_total_crime <- left_join(st_make_valid(police_grids), crime_grid, by="GRID") %>% 
-  dplyr::group_by(GRID, month) %>% 
-  dplyr::summarise(total.crimes.month = sum(count.in.month, na.rm=T)) %>%
-  replace(is.na(.), 0)
-
-
-### Split neighborhoods into list 
-neighborhood.list <- split(neighborhoods, f=neighborhoods$NAME)
-
-### Create list to hold results of the percent change in total crimes information 
-total.crimes.summary.list <- list()
-
-
-#### SET MONTH OF ANALYSIS ####
-month.of.analysis <- 6 #June 
+#police_grids_total_crime <- left_join(st_make_valid(police_grids), crime_grid, by="GRID") %>% 
+#  dplyr::group_by(GRID, month) %>% 
+#  dplyr::summarise(total.crimes.month = sum(count.in.month, na.rm=T)) %>%
+ # replace(is.na(.), 0)
 
 ### Calculate city-wide statistics to slot in where neighborhoods don't have any reported crimes ####
 city.crimes <- crime_grid %>% 
   dplyr::filter(!is.na(month)) %>%
   ungroup() %>%
   group_by(month) %>%
-  summarise(total.crimes = sum(count.in.month)) %>%
-  dplyr::mutate(year = 2022) %>%
-  dplyr::mutate(change.total.rel.last.month = total.crimes - lag(total.crimes, n = 1)) %>%
+  summarise(curr.total.crimes = sum(count.in.month)) %>%
+  dplyr::mutate(year = 2022) %>% ## change as desired
+  dplyr::mutate(change.total.rel.last.month = curr.total.crimes - lag(curr.total.crimes, n = 1)) %>%
   dplyr::mutate(
     direction.change.rel.last.month = case_when(
       change.total.rel.last.month > 0 ~ "up",
@@ -104,44 +97,64 @@ city.crimes <- crime_grid %>%
     )
   ) %>%
   dplyr::mutate(abs.change.total = abs(change.total.rel.last.month)) %>%
-  dplyr::mutate(last.months.total = lag(total.crimes, n=1))
+  dplyr::mutate(prev.total.crimes = lag(curr.total.crimes, n=1))
 
-### Return the last row of the monthly time series of total crime
+### Return the last row of the monthly time series of total crime (the most recent month)
 total.crime.city.this.month <- city.crimes %>% 
   dplyr::filter(month == max(month)) %>%
-  dplyr::mutate(month_name = month.name[month])
+  dplyr::mutate(month_name = month.name[month]) %>%
+  dplyr::relocate(month_name, .before=everything())
 
-### Produce statement about total crimes reported for the whole city
-total.crime.city.statement <- paste0("There were ", total.crime.city.this.month$total.crimes," crimes recorded across all of Sacramento during the month of ",  total.crime.city.this.month$month_name, ".")
+#### Total crime by type for entire city for the entire time series ####
+city.crimes.type <- crime_grid %>% 
+  group_by(month, standard.crime.type.label) %>%
+  dplyr::summarise(total.of.type = sum(count.in.month)) %>% 
+  dplyr::filter(!is.na(month)) %>%
+  ungroup() %>%
+  pivot_wider(., names_from="standard.crime.type.label", values_from="total.of.type", values_fill=0) %>%
+  clean_names()
 
-### Produce statement about change in total crimes reported for the whole city 
-if(total.crime.city.this.month$abs.change.total == 0){
+### Calculate crimes by type for current/most recent month 
+city.crimes.type.curr <- city.crimes.type %>%
+  dplyr::filter(month == max(month)) %>% 
+  dplyr::mutate(month_name = month.name[month]) %>% 
+  dplyr::relocate(month_name, .before=everything()) 
   
-  total.crime.city.change.statement <-
-    paste0(
-      "That's ",
-      total.crime.city.this.month$direction.change.rel.last.month,
-      " from the previous month's total of ",
-      total.crime.city.this.month$last.months.total,
-      "."
-    )}
+dim(city.crimes.type.curr)
 
-if(total.crime.city.this.month$abs.change.total > 0){
-  total.crime.city.change.statement <-
-    paste0(
-      "That's ",
-      total.crime.city.this.month$direction.change.rel.last.month,
-      " ",
-      total.crime.city.this.month$abs.change.total,
-      " from the previous month's total of ",
-      total.crime.city.this.month$last.months.total,
-      "."
-    )
-}
+colnames(city.crimes.type.curr) <- paste("curr", colnames(city.crimes.type.curr),sep="_")
+
+### Calculate crimes by type for previous month
+city.crimes.type.prev <- city.crimes.type %>%
+  dplyr::filter(month == max(month)-1) %>% 
+  dplyr::mutate(month_name = month.name[month]) %>% 
+  dplyr::relocate(month_name, .before=everything()) 
+
+colnames(city.crimes.type.prev) <- paste("prev", colnames(city.crimes.type.prev),sep="_")
+
+### Bind both dataframes together 
+city.crimes.type.curr.prev <- cbind(city.crimes.type.curr, city.crimes.type.prev)
+
+
+### Final full city-wide crime data
+final.citywide.crime <- cbind(total.crime.city.this.month, city.crimes.type.curr.prev) %>%
+  dplyr::mutate(neighborhood = "city-wide") %>%
+  relocate(neighborhood, .before=everything()) %>%
+  dplyr::mutate(no_crime_flag = "")
+
+### Create list of all column names that need to be in the ultimate dataframe - very important! 
+mother.column.names <-  colnames(final.citywide.crime)   # Vector of columns you want in this data.frame
+
+
 ### For-loop for neighborhood-level crime stats or, if no crime, filling in with city-wide total. ####
 
+
+### Split neighborhoods into list 
+neighborhood.list <- split(neighborhoods, f=neighborhoods$NAME)
+
+
 ### Prep list
-summary.statements.list <- list()
+summary.df.list <- list()
 
 for(i in 1:length(neighborhood.list)){
   
@@ -159,19 +172,19 @@ for(i in 1:length(neighborhood.list)){
   target_grids <- police_grids %>% 
     dplyr::filter(GRID %in% target_grid_coverage$GRID)
   
-  ### join the crime summaries to the target grids for this year and last year ### 
-  target_grids_crime <- left_join(st_make_valid(target_grids), crime_grid, by="GRID")
-  
+  ### join the crime summaries to the target grids for this year ### 
+  target_grids_crime <- left_join(st_make_valid(target_grids), crime_grid, by="GRID") 
+    
   ### Summarize total crime by month in the neighborhood and calculate absolute change from previous month (data only start in January)
   total.crimes <- target_grids_crime %>%
     dplyr::filter(!is.na(month)) %>%
     ungroup() %>%
     group_by(month) %>%
-    summarise(total.crimes = sum(count.in.month)) %>%
+    summarise(curr.total.crimes = sum(count.in.month)) %>%
     dplyr::mutate(year = 2022) %>%
     dplyr::mutate(NAME = target$NAME) %>%
     st_drop_geometry() %>%
-    dplyr::mutate(change.total.rel.last.month = total.crimes - lag(total.crimes, n = 1)) %>%
+    dplyr::mutate(change.total.rel.last.month = curr.total.crimes - lag(curr.total.crimes, n = 1)) %>%
     dplyr::mutate(
       direction.change.rel.last.month = case_when(
         change.total.rel.last.month > 0 ~ "up",
@@ -181,24 +194,29 @@ for(i in 1:length(neighborhood.list)){
       )
     ) %>%
     dplyr::mutate(abs.change.total = abs(change.total.rel.last.month)) %>%
-    dplyr::mutate(last.months.total = lag(total.crimes, n=1))
+    dplyr::mutate(prev.total.crimes = lag(curr.total.crimes, n=1))
   
   ### If nrow of total crimes for neighborhood == 0 
   if(nrow(total.crimes) == 0){
     
-    total.crime.statement <- paste0("There have been no crimes recorded in this neighborhood this year.")
+    df <- final.citywide.crime %>%
+      dplyr::mutate(neighborhood = target$NAME)
+     
     
-    total.crime.change.statement <- paste0("There have been no crimes recorded in this neighborhood this year.")
+    ### add missing columns 
+    Missing <- setdiff(mother.column.names, names(df))  # Find names of missing columns
+    df[Missing] <- 0                    # Add them, filled with '0's
+    df <- df[mother.column.names]        # Put columns in desired order
     
-    summary.statement.df <- data.frame(
-      neighborhood = target$NAME,
-      total.crime.number = 0,
-      total.crime.statement = total.crime.statement,
-      total.crime.change.statement = total.crime.change.statement,
-      total.crime.city.statement = total.crime.city.statement,
-      total.crime.city.change.statement = total.crime.city.change.statement)
+    ### Set row to NA 
+    df[] <- NA
     
-    summary.statements.list[[i]] <- summary.statement.df
+    df <- df %>% 
+      dplyr::mutate(no_crime_flag = "THERE ARE NO CRIMES REPORTED FOR THIS NEIGHBORHOOD")
+    
+    df$no_crime_flag <- as.character(df$no_crime_flag)
+    
+    summary.df.list[[i]] <- df
   }
   
   ### If nrow of total crimes for neighborhood > 0 
@@ -206,51 +224,65 @@ for(i in 1:length(neighborhood.list)){
   if(nrow(total.crimes) > 0){
     
     ### Return the last row of the monthly time series of total crime
-    total.crime.this.month <- total.crimes %>% 
+    total.crime.curr <- total.crimes %>% 
       dplyr::filter(month == max(month)) %>%
-      dplyr::mutate(month_name = month.name[month])
+      dplyr::mutate(month_name = month.name[month]) %>%
+      dplyr::relocate(month_name, .before = everything())
     
-    ### Create total crime statement
-    total.crime.statement <- paste0("There were ",total.crime.this.month$total.crimes," crimes recorded during the month of ", total.crime.this.month$month_name, ".")
+    ### Create crime type dataframes 
+    total.crime.type.neighborhood <-  target_grids_crime %>%
+      st_drop_geometry() %>%
+      group_by(month, standard.crime.type.label) %>%
+      dplyr::summarise(total.of.type = sum(count.in.month)) %>% 
+      dplyr::filter(!is.na(month)) %>%
+      ungroup() %>%
+      pivot_wider(., names_from="standard.crime.type.label", values_from="total.of.type", values_fill=0) %>%
+      clean_names() %>% 
+      dplyr::mutate(no_crime_flag = "THERE ARE CRIMES REPORTED FOR THIS NEIGHBORHOOD")
     
-    ### Section to produce the total number of city-wide crime
-    total.crime.city.statement = total.crime.city.statement
-    total.crime.city.change.statement = total.crime.city.change.statement
+    crimes.type.neighborhood.curr <-total.crime.type.neighborhood  %>%
+      dplyr::filter(month == max(month)) %>% 
+      dplyr::mutate(month_name = month.name[month]) %>% 
+      dplyr::relocate(month_name, .before=everything()) 
     
-    ### If there has been no change in total numbers 
-   if(total.crime.this.month$abs.change.total == 0){
+    dim(crimes.type.neighborhood.curr)
+    
+    ### add current prefix
+    colnames(crimes.type.neighborhood.curr) <- paste("curr", colnames(crimes.type.neighborhood.curr),sep="_")
+    
+    ### Calculate crimes by type for previous month
+    crimes.type.neighborhood.prev <- total.crime.type.neighborhood %>%
+      dplyr::filter(month == max(month)-1) %>% 
+      dplyr::mutate(month_name = month.name[month]) %>% 
+      dplyr::relocate(month_name, .before=everything()) 
+    
+    ### If the number of rows in crimes.type.neighborhood.prev == 0 fill with NA
+    if(nrow(crimes.type.neighborhood.prev) == 0){
+
+      crimes.type.neighborhood.prev <- crimes.type.neighborhood.prev %>% 
+        add_row() 
       
-      total.crime.change.statement <-
-        paste0(
-          "That's ",
-          total.crime.this.month$direction.change.rel.last.month,
-          " from the previous month's total of ",
-          total.crime.this.month$last.months.total,
-          "."
-        )}
-  #### If there has been a non-zero change in total   
-   if(total.crime.this.month$abs.change.total > 0){
-     total.crime.change.statement <-
-       paste0(
-         "That's ",
-         total.crime.this.month$direction.change.rel.last.month,
-         " ",
-         total.crime.this.month$abs.change.total,
-         " from the previous month's total of ",
-         total.crime.this.month$last.months.total,
-         "."
-       )
-   }
-        
-    summary.statement.df <- data.frame(
-      neighborhood = target$NAME,
-      total.crime.statement =  total.crime.statement,
-      total.crime.number = total.crime.this.month$total.crimes,
-      total.crime.change.statement = total.crime.change.statement,
-      total.crime.city.statement = total.crime.city.statement,
-      total.crime.city.change.statement = total.crime.city.change.statement)
+    }
     
-    summary.statements.list[[i]] <- summary.statement.df
+    colnames(crimes.type.neighborhood.prev) <- paste("prev", colnames(crimes.type.neighborhood.prev),sep="_")
+    
+    ### Bind both dataframes together 
+    neighborhood.crimes.type.curr.prev <- cbind(crimes.type.neighborhood.curr, crimes.type.neighborhood.prev)
+    
+    ### AND NOW CREATE THE MOTHER OF ALL DATAFRAMES 
+    
+    df <- cbind(total.crime.curr, neighborhood.crimes.type.curr.prev) %>%
+      dplyr::mutate(neighborhood = target$NAME) %>%
+      dplyr::relocate(neighborhood, .before=everything())
+    
+    Missing <- setdiff(mother.column.names, names(df))  # Find names of missing columns
+    df[Missing] <- 0                    # Add them, filled with '0's
+    df <- df[mother.column.names]                       # Put columns in desired order
+  
+    ### Convert the no crime flag to character 
+    df$no_crime_flag <- as.character(df$no_crime_flag)
+    
+    summary.df.list[[i]] <- df
     
     }
     
@@ -258,10 +290,11 @@ for(i in 1:length(neighborhood.list)){
 }
 
 ### Bind all summary statements together into a dataframe
-all.summary.statements <- bind_rows(summary.statements.list)
+all.summary.statements <- bind_rows(summary.df.list)
 
 ### Check nrow - should be 129 neighborhoods
 nrow(all.summary.statements)
+
 
 ### Write to csv
 #write_csv(all.summary.statements, "outputs/sac-neighborhood-total-crimes-2022-07-14.csv")
