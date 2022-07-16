@@ -212,6 +212,8 @@ for(i in 1:length(neighborhood.list)){
     df[] <- NA
     
     df <- df %>% 
+      dplyr::mutate(neighborhood = target$NAME) %>% 
+      dplyr::relocate(neighborhood, .before=everything()) %>% 
       dplyr::mutate(no_crime_flag = "THERE ARE NO CRIMES REPORTED FOR THIS NEIGHBORHOOD")
     
     df$no_crime_flag <- as.character(df$no_crime_flag)
@@ -290,11 +292,12 @@ for(i in 1:length(neighborhood.list)){
 }
 
 ### Bind all summary statements together into a dataframe
-all.summary.statements <- bind_rows(summary.df.list)
+all.summary.statements <- bind_rows(summary.df.list) %>% 
+  bind_rows(., final.citywide.crime)
 
 ### Check nrow - should be 129 neighborhoods
 nrow(all.summary.statements)
 
 
 ### Write to csv
-#write_csv(all.summary.statements, "outputs/sac-neighborhood-total-crimes-2022-07-14.csv")
+write_csv(all.summary.statements, "outputs/sac-neighborhood-crime-summary-2022-07-16.csv")
